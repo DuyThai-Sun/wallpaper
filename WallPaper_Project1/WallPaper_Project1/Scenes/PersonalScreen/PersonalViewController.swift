@@ -86,7 +86,11 @@ extension PersonalViewController: UICollectionViewDataSource {
 
 extension PersonalViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+<<<<<<< HEAD
         let detailScreen = DetailViewController(nibName: DetailViewController.identifier, bundle: nil)
+=======
+        let detailScreen = DetailViewController(nibName: "DetailViewController", bundle: nil)
+>>>>>>> 7d710c7 (Create UI PersonalScreen)
         detailScreen.modalPresentationStyle = .fullScreen
         present(detailScreen, animated: true, completion: nil)
     }
