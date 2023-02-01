@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import CoreData
 
 final class PersonalViewController: UIViewController {
     @IBOutlet private weak var downloadButton: UIButton!
@@ -15,11 +16,42 @@ final class PersonalViewController: UIViewController {
     private var isPhoto = true
     private var images = [Image]()
     private var videos = [Videos]()
+    private let coreData = CoreData.shared
+    private var dataFromCoreData = [CoreDataObject]()
+    private let apiCaller = APICaller.shared
+    private let refreshControl = UIRefreshControl()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         configView()
         configCollectionView()
+        getDataFromCoreData()
+        configRefesh()
+    }
+    private func configRefesh() {
+        collectionView.refreshControl = refreshControl
+        refreshControl.tintColor = .white
+        refreshControl.addTarget(self, action: #selector(refreshData(_:)), for: .valueChanged)
+    }
+
+    @objc private func refreshData(_ sender: Any) {
+        getDataFromCoreData()
+        DispatchQueue.main.async {[unowned self] in
+            refreshControl.endRefreshing()
+            collectionView.reloadData()
+        }
+    }
+
+    private func getDataFromCoreData() {
+        coreData.getDataFromCoreData() {[unowned self] items, error in
+            guard error == nil else {
+                showPopUp(notice: "Could not fetch. \(String(describing: error))")
+                return
+            }
+            dataFromCoreData = items.map {
+                changeNSManagedObjectToCoreDataObject(nsManagedObject: $0)
+            }
+        }
     }
 
     private func configView() {
@@ -41,7 +73,21 @@ final class PersonalViewController: UIViewController {
         view.addSubview(popUpView.view)
     }
 
+    private func changeNSManagedObjectToCoreDataObject (nsManagedObject: NSManagedObject) -> CoreDataObject {
+        let id = nsManagedObject.value(forKey: "id") as? Int
+        let width = nsManagedObject.value(forKey: "width") as? Int
+        let height = nsManagedObject.value(forKey: "height") as? Int
+        let url = nsManagedObject.value(forKey: "url") as? String
+        let photographer = nsManagedObject.value(forKey: "photographer") as? String
+        let photographerId = nsManagedObject.value(forKey: "photographerId") as? Int
+        let avgColor = nsManagedObject.value(forKey: "avgColor") as? String
+        let isVideo = nsManagedObject.value(forKey: "isVideo") as? Int
+        let videoDuration = nsManagedObject.value(forKey: "videoDuration") as? Int
+        return CoreDataObject(id: id, width: width, height: height, url: url, photographer: photographer, photographerId: photographerId, avgColor: avgColor, isVideo: isVideo ?? 0, videoDuration: videoDuration )
+    }
+
     @IBAction func downloadButtonTapped(_ sender: Any) {
+        dataFromCoreData = []
         downloadButton.setTitleColor(.white, for: .normal)
         favoriteButton.setTitleColor(.gray, for: .normal)
         DispatchQueue.main.async { [unowned self] in
@@ -61,23 +107,52 @@ final class PersonalViewController: UIViewController {
 extension PersonalViewController: UICollectionViewDataSource {
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-//       update after
-        return 15
+        return dataFromCoreData.count
     }
 
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        if isPhoto {
+        if dataFromCoreData[indexPath.row].isVideo == 1 {
+            guard let cell: VideoCollectionViewCell =
+                    collectionView.dequeueReusableCell(forIndexPath: indexPath) else {
+                showPopUp(notice: "Could not dequeue cell with identifier ")
+                return UICollectionViewCell()
+            }
+            let idVideo = Int(dataFromCoreData[indexPath.row].id ?? 0)
+            cell.setInformationFromCoreData(data: dataFromCoreData[indexPath.row])
+            let url = dataFromCoreData[indexPath.row].url
+            apiCaller.getVideo(videoURL: url ?? "") { [weak self] (player, error) in
+                guard let self = self else { return }
+                if let error = error {
+                    self.showPopUp(notice: "\(error)")
+                }
+                if idVideo == cell.getIdVideo() {
+                    if let player = player {
+                        cell.configVideo(player: player)
+                    }
+                }
+            }
+
+            return cell
+        } else {
             guard let cell: ImageCollectionViewCell =
                     collectionView.dequeueReusableCell(forIndexPath: indexPath) else {
                 showPopUp(notice: "Could not dequeue cell with identifier ")
                 return UICollectionViewCell()
             }
-            return cell
-        } else {
-            guard let cell: VideoCollectionViewCell =
-                    collectionView.dequeueReusableCell(forIndexPath: indexPath) else {
-                showPopUp(notice: "Could not dequeue cell with identifier ")
-                return UICollectionViewCell()
+            let idImage = dataFromCoreData[indexPath.row].id
+            cell.setIdImage(id: idImage ?? 0)
+            apiCaller.getImage(imageURL: dataFromCoreData[indexPath.row].url ?? "") { [weak self] (data, error)  in
+                guard let self = self else { return }
+                if let error = error {
+                    self.showPopUp(notice: "\(error)")
+                }
+                if let data = data {
+                    if idImage == cell.getIdImage() {
+                        DispatchQueue.main.async {
+                            cell.setImage(data: data)
+                        }
+                    }
+                }
             }
             return cell
         }
@@ -86,11 +161,12 @@ extension PersonalViewController: UICollectionViewDataSource {
 
 extension PersonalViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-<<<<<<< HEAD
         let detailScreen = DetailViewController(nibName: DetailViewController.identifier, bundle: nil)
-=======
-        let detailScreen = DetailViewController(nibName: "DetailViewController", bundle: nil)
->>>>>>> 7d710c7 (Create UI PersonalScreen)
+        if dataFromCoreData[indexPath.row].isVideo == 1 {
+            detailScreen.bindDataFromCoreData(data: dataFromCoreData[indexPath.row])
+        } else {
+            detailScreen.bindDataFromCoreData(data: dataFromCoreData[indexPath.row])
+        }
         detailScreen.modalPresentationStyle = .fullScreen
         present(detailScreen, animated: true, completion: nil)
     }
